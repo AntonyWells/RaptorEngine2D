@@ -2,9 +2,12 @@ uniform vec3 LightPosition;
 uniform vec3 LightColor;
 uniform float LightRange;
 
+varying vec3 vVertexPos;
+
 void main(){
-
-
-	gl_Position = gl_Vertex;
+	
+	gl_TexCoord[0] = gl_MultiTexCoord0;
+	gl_Position = gl_ProjectionMatrix * gl_Vertex;
+	vVertexPos = gl_Vertex.xyz;
 
 }

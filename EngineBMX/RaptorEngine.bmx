@@ -765,6 +765,13 @@ Type RMap2D
 	Field SetMap:TMap = CreateMap()
 	Field ViewX:Float, ViewY:Float, ViewZ:Float = 1
 	Field ViewAng:Float
+	Field Lights:TList = CreateList()
+	
+	Method AddLight(l:RLight2D)
+		
+		Lights.AddLast(l)
+	
+	End Method
 	
 	Function FromContent:RMap2D(c:RContent)
 		
@@ -955,9 +962,11 @@ Type RMap2D
 			
 		Next
 			
-
+		fx_difLit = FX_DiffuseLit.cr()
 		
 	End Method
+	
+	Field fx_difLit:FX_DiffuseLit
 	
 	Method Draw()
 		
@@ -968,16 +977,21 @@ Type RMap2D
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 		glColor4f(1, 1, 1, 1)
 	
+		fx_difLit.Use()
+		
 		For Local y:Int = 0 Until MapH
 			
 			Local dy:Float = (y * tileH * viewZ) - ViewY
 			
-			
+			If dy < - TileH * 2 Continue
+			If dy > GraphicsHeight() + TileH * 2 Continue
 			
 			For Local x:Int = 0 Until MapW
 			
 				Local dx:Float = (x * tilew * viewZ) - ViewX
-			
+				If dx < - TileW * 2 Continue
+				If dy > GraphicsWidth() + TileW * 2 Continue
+				
 				Local vx:Float[4] ;
 				Local vy:Float[4] ;
 			
@@ -1057,18 +1071,72 @@ Type RMap2D
 
 					
 				t.Set.Visual.Bind(0)
-				glBegin(GL_QUADS)
+				
+				If Lights.Count() = 0
+						
+					glBegin(GL_QUADS)
+						
 					
-					glTexCoord2f vu[0], vv[0]
-					glVertex2f vx[0], vy[0]
-					glTexCoord2f vu[1], vv[1]
-					glVertex2f vx[1], vy[1]
-					glTexCoord2f vu[2], vv[2]
-					glVertex2f vx[2], vy[2]
-					glTexCoord2f vu[3], vv[3]
-					glVertex2f vx[3], vy[3]
+						glTexCoord2f vu[0], vv[0]
+						glVertex2f vx[0], vy[0]
+						glTexCoord2f vu[1], vv[1]
+						glVertex2f vx[1], vy[1]
+						glTexCoord2f vu[2], vv[2]
+						glVertex2f vx[2], vy[2]
+						glTexCoord2f vu[3], vv[3]
+						glVertex2f vx[3], vy[3]
+											
+					glEnd()
+						
+				Else
+			
+					For Local l:RLight2D = EachIn Lights
 					
-				glEnd()
+				
+						l.Activate() ;
+						
+						Local ox:Float, oy:Float, oz:Float
+						
+						ox = l.x
+						oy = l.y
+						oz = l.Z
+						
+						l.x:*ViewZ
+						l.y:*ViewZ
+						
+						qr(l.x, l.y, ViewAng, ViewZ, mx, my)
+						l.Z = l.Z * ViewZ
+						
+						fx_difLit.UseLight = l
+						
+						fx_difLit.BindPar()
+				
+						l.x = ox
+						l.y = oy
+						l.Z = oz
+						
+						glBegin(GL_QUADS)
+						
+					
+							glTexCoord2f vu[0], vv[0]
+							glVertex2f vx[0], vy[0]
+							glTexCoord2f vu[1], vv[1]
+							glVertex2f vx[1], vy[1]
+							glTexCoord2f vu[2], vv[2]
+							glVertex2f vx[2], vy[2]
+							glTexCoord2f vu[3], vv[3]
+							glVertex2f vx[3], vy[3]
+											
+						glEnd()
+					
+					
+				
+					
+					Next
+			
+				EndIf
+				
+				
 				t.Set.Visual.Unbind(0)
 			't.drawQuad(vx[0], vy[0], vx[1], vy[1], vx[2]:vy[2]:c:vx[3]:vy[3]:c:(0.2f + (z * 0.1f))] ;
 				
@@ -1082,6 +1150,7 @@ Type RMap2D
 	
 		Next
 		
+		fx_difLit.fin()
 	
 	End Method
 	
@@ -1259,6 +1328,14 @@ Type RLight2D
 	Field R:Float, G:Float, B:Float
 	Field Range:Float
 	Global Active:RLight2D
+	Global Lights:TList = CreateList()
+	
+	Method New()
+		
+		
+	
+	End Method
+	
 	
 	Method Activate()
 	
@@ -1270,11 +1347,14 @@ End Type
 Type FX_DiffuseLit Extends REffect
 
 	Field UseLight:RLight2D
-
+	Field lPos:Int, lCol:Int, lRange:Int
 	Function Cr:FX_DiffuseLit()
 	
 			Local r:FX_DiffuseLit = New FX_DiffuseLit
-			r.FromContent(RFileSystem.Instance().GetContent("system/content/effect/diffuselit.vertex"), RFileSystem.Instance().GetContent("system/content/effect/diffuseLit.fragment"))
+			r.FromContent(RFileSystem.Instance().GetContent("system/content/effect/diffuseLit.vertex"), RFileSystem.Instance().GetContent("system/content/effect/diffuseLit.fragment"))
+			r.lPos = r.Loc("LightPosition")
+			r.lCol = r.Loc("LightColor")
+			r.lRange = r.Loc("LightRange")
 			Return r
 	
 	End Function
@@ -1294,9 +1374,9 @@ Type FX_DiffuseLit Extends REffect
 	
 	Method BindPar()
 		
-		V3(Loc("LightPosition"), UseLight.X, UseLight.Y, UseLight.Z)
-		F(Loc("LightRange"), UseLight.Range)
-		V3(Loc("LightColor"), UseLight.R, UseLight.G, UseLight.B)
+		V3(lPos, UseLight.X, UseLight.Y, UseLight.Z)
+		F(lRange, UseLight.Range)
+		V3(lCol, UseLight.r, UseLight.G, UseLight.B)
 				
 	End Method
 	

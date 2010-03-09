@@ -1,9 +1,24 @@
+uniform sampler2D TexDiffuse;
+
 uniform vec3 LightPosition;
 uniform vec3 LightColor;
 uniform float LightRange;
 
+varying vec3 vVertexPos;
+
 void main(){
 
-	gl_FragColor = vec4(1,0,0,1);
+	vec4 t1 = texture2D( TexDiffuse,gl_TexCoord[0].st );
+	
+	vec3 upNorm = vec3(0,0,1);
+
+	vec3 dir = LightPosition - vVertexPos;
+	dir = normalize(dir);
+
+	float lf = dot(upNorm,dir);	
+
+	gl_FragColor.rgb = t1.rgb*lf;
+	
+	gl_FragColor.a = 1.0;
 
 }
