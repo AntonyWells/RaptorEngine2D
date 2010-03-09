@@ -1,0 +1,10 @@
+uniform vec3 LightPosition;
+uniform vec3 LightColor;
+uniform float LightRange;
+
+void main(){
+
+
+	gl_Position = gl_Vertex;
+
+}

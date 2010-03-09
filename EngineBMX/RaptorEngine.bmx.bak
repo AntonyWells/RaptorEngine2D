@@ -1,0 +1,665 @@
+SuperStrict 
+
+Type RLog Extends RInstance
+
+	Global _NAME:String = "Logger"
+	Global _TYPE:String = "RLog"
+	
+	Method New()
+	
+		IName = _NAME
+		IType = _TYPE
+	
+	End Method
+	
+	Function CreateInstance()
+	
+		RegisterInstance( New RLog )
+	
+	End Function
+
+	Function Instance:RLog()
+	
+		Return RLog(RInstance.GetInstance(_Name,_Type))
+			
+	End Function
+
+	Method Error(err:String,locale:String)
+	
+		Print "Err:"+err+"~nLocation:"+locale
+		RuntimeError "Err:"+err+"~nLocation:"+locale
+	
+	End Method
+
+End Type
+
+Type RInstance
+
+	Global InstanceMap:TMap = CreateMap()
+
+	Field IName:String 
+	Field IType:String 
+	Field IAuthor:String
+	Field ICopy:String 
+
+	Function GetInstance:RInstance( c:String,t:String = "" )
+
+		Try	
+		Local i:RInstance = RInstance(MapValueForKey( InstanceMap,c ))
+		
+		If i <> Null
+		
+			If t<>""
+			
+				If i.IType <> t
+				
+					RLog.Instance().Error("Found instance with matching name, but of different type. Expected:"+t+" got:"+i.IType+" for:"+i.IName,"RInstance.GetInstance")
+				
+				EndIf
+			
+			EndIf
+		
+			Return i
+		
+		EndIf
+		Catch err:String
+		
+			Print "Failed to get instance."
+			RuntimeError "Instance faliure."
+		
+		End Try
+	
+	End Function
+
+	Function RegisterInstance( i:RInstance )
+	
+		If MapContains( InstanceMap,i )
+			
+			RLog.Instance().Error( "Instance:"+i.IName+" of type:"+i.IType+" already registered as instance.","RInstance.RegisterInstance" )
+					
+		End If
+	
+		MapInsert( InstanceMap,i.IName,i )
+	
+	End Function
+
+End Type
+
+Type RCore Extends RInstance
+	
+	Const _NAME:String = "RaptorCore"
+	Const _TYPE:String = "RCore"
+	
+	Field UserWidth:Float
+	Field UserHeight:Float
+	
+	Global DontPackage:Int = False 
+		
+	Method New()
+	
+		IName = _NAME
+		IType = _TYPE
+		RLog.CreateInstance()
+			
+	End Method
+	
+	Function CreateInstance()
+	
+		RegisterInstance( New RCore )
+			
+	End Function
+
+	Function Instance:RCore()
+	
+		Return RCore(RInstance.GetInstance(_NAME,_TYPE))
+	
+	End Function
+
+	Method Create()
+	
+		UserWidth = -1
+		UserHeight = -1
+	
+	End Method
+	
+	Method CreateDisplay(w:Int,h:Int,windowed:Int)
+	
+		UserWidth = w
+		UserHeight = h
+		
+		SetGraphicsDriver GLMax2DDriver()
+		Graphics w,h,32*(1-windowed)
+		glewInit()
+		RContentPackage.SetupContentSystem()
+		RFileSystem.CreateInstance()
+			
+	End Method
+
+End Type
+
+Type RFileSystem Extends RInstance
+
+	Const _NAME:String = "FileSystem"
+	Const _TYPE:String = "RFileSystem"
+	Field Content:TMap = CreateMap()
+	 
+	Method New()
+	
+		IName = _NAME
+		IType = _TYPE
+	
+	
+	End Method
+	
+	Method RegisterContent( path:String )
+	
+		content.insert( StripAll(path).tolower()+"/",path )
+	
+	End Method 
+	
+	Method GetContent:RContent( path:String )
+	
+		path = Replace(path,"\","/")
+		path = path.tolower()
+		Local fi:Int = Instr(path,"/")
+		Local lib:String = Mid(path,1,fi)
+		
+		If Not content.contains(lib)
+		
+			Print "Unknown resource:"+path
+			RLog.Instance().Error("Content package:"+lib+" not found or registered.","RFileSystem.GetContent()")
+		
+		EndIf
+		
+		Local obj:Object = content.valueforkey(lib)
+		
+		Local pack:RContentPackage 
+		
+		
+		
+		If Not rcontentpackage(obj)<>Null
+		
+			Local libPath:String = Mid(path,1,fi-1)+".content"
+		
+			pack = RContentPackage.OpenPackage( libPath )
+			
+			content.remove(lib)
+			content.insert(lib,pack)
+		
+		Else
+		
+			pack = RContentPackage(obj)
+		
+		EndIf
+	
+		
+	'	For Local c:RContent = EachIn pack.root.content
+		
+	'		Print c.globalname +"=="+path
+	'		If c.globalname = path
+		
+	'			Return c
+		
+	'		EndIf
+		
+	'	Next
+	
+		Local c:RContent = RContent(MapValueForKey(pack.root.content,path))
+		
+		If c = Null
+		
+			RLog.Instance().Error("Content package was found matching resource path, but no resource within it matched the global path.:"+path,"RFileSystem.GetContent()")
+		
+		End If
+		
+		Return c
+	
+	End Method
+	
+	Function Instance:RFileSystem()
+	
+		Return RFileSystem(RInstance.GetInstance( _NAME,_TYPE))
+	
+	End Function
+	
+	Function CreateInstance()
+		
+		Print "Registering instance..."
+		RInstance.RegisterInstance( New RFileSystem )
+		Local fs:RFileSystem = Instance()
+		Print "Done."
+
+?debug
+		Print "About to package content..."
+		If Not RCore.DontPackage
+		fs.PackageContent()
+		EndIf
+		Print "Done."
+?
+		Print "About to scan for packages..."
+		fs.FindPackages()
+		Print "Done."
+	
+	End Function
+	
+	Method PackageContent()
+		
+		RContentPackage.Package("system/")
+		
+	
+	End Method
+	
+	Method FindPackages()
+
+		Local dir:Int = ReadDir(CurrentDir())
+		
+		While True
+		
+			Local file:String = NextFile(dir)
+			
+			Select file
+			
+				Case ""
+					Exit
+				Case ".","..",".\","./","../","..\","	"," "
+				Default
+				
+					If ExtractExt(file).tolower() = "content"
+					
+						RegisterContent( file )
+					
+					EndIf
+			
+			End Select
+		
+		Wend
+		
+		CloseDir dir
+	
+	End Method
+	
+End Type
+
+Type RContent
+
+	Field LocalName:String
+	Field GlobalName:String
+	Field OriginalRelativePath:String
+	Field ContentStartByte:Long
+	Field ContentLength:Long
+	Field Content:TMap = CreateMap()
+	Field ArcOffset:Long = 0
+	Field Data:TBank
+	Field Pack:RContentPackage
+	Field DataStream:TStream 
+	Field InMem:Int 
+	
+	Method ToStream:TStream()
+	
+		LoadIfNeed()
+		DataStream.Seek(0)
+		Return DataStream
+	
+	End Method
+	
+	Method ToBytePtr:Byte Ptr()
+	
+		LoadIfNeed()
+		Return BankBuf(data)
+	
+	End Method
+	
+		
+	Method LoadIfNeed()
+	
+		If InMem Return
+		pack._FS.Seek( pack._OS + ContentStartByte )
+		data = CreateBank(ContentLength)
+		ReadBank(data, pack._FS,0,ContentLength )
+		DataStream = CreateRamStream( BankBuf(data),ContentLength,True,False )
+		InMem = True
+			
+	End Method
+	
+	Method AddContent( name:String,c:RContent )
+		If c = Null
+			Return
+		EndIf
+		If content.contains(name)
+		
+			Print "Filesystem error."
+			RuntimeError "Content double entry for:"+c.LocalName+"("+c.GlobalName+")of="+c.originalrelativepath
+		
+		EndIf
+		MapInsert(content,name,c)
+	
+	End Method
+
+End Type
+
+
+
+Type RContentPackage
+
+	Field Path:String
+	Field Root:RContent
+	Field IgnoreFilter:TList = CreateList()
+	Field _FS:TStream
+	Field _OS:Int 
+
+	Function SetupContentSystem()
+	
+	End Function
+
+
+	Function OpenPackage:RContentPackage(path:String)
+	
+		Local _FS:TStream = ReadFile(path)
+		
+		If _fs = Null
+		
+			RLog.Instance().Error("Could not load content package:"+path,"RContentPackage.OpenPackage()")
+					
+		EndIf
+		
+		Local ret:RContentPackage = New RContentPackage
+		Local root:RContent = New RContent
+		root.pack = ret
+		ret.root = root
+		ret._FS = _fs
+		While StreamPos(_FS)<StreamSize(_FS)
+		
+			Local op:Int = ReadByte(_FS)
+			
+			Select op
+			
+				Case 96
+		
+					Local nc:RContent = New RContent
+					nc.LocalName = _FS.ReadLine()
+					nc.globalname = _FS.ReadLine()
+					nc.originalrelativepath = _FS.ReadLine()
+					nc.contentstartbyte = _fs.ReadLong()
+					nc.contentlength = _Fs.ReadLong()
+					nc.pack = ret
+					root.addcontent( nc.globalname.tolower(),nc )
+					Print "Adding Content Header:~nLocal:"+nc.localName+"~nGlobal:"+nc.globalname			
+				Case 128
+				
+					ret._OS = StreamPos(_FS)
+					Exit 
+			
+			End Select
+		
+		
+		Wend 
+		
+		Return ret
+	
+	
+	End Function 
+	
+	Method Close()
+	
+		If _FS = Null
+		
+			RLog.Instance().Error("No active stream to close.","RContentPackage.Close()")
+					
+		End If
+	
+		_FS.Flush()
+		_FS.Close()
+		_FS = Null
+	
+	End Method
+
+	Function Package:RContentPackage(path:String)
+	
+		Local r:RContentPackage = New RContentPackage
+		
+		r.Root = Null
+		
+		r.PackageFolder(path)
+		r.SavePackage(ExtractDir(path))
+		
+		
+		Return r
+	
+	End Function
+
+	Method SavePackage(path:String)
+		
+		Print "Saving package..."
+		
+		If Right(path.tolower(),8)<>".content"
+		
+			path:+".content"
+		
+		EndIf
+	
+		Local fs:TStream = WriteFile(path)
+		
+		If fs = Null
+		
+			RuntimeError "Could not create content package:"+path
+		
+		EndIf
+		
+		Local tSiz:Long = 0 
+		
+		For Local key:String = EachIn MapKeys(root.content)
+		
+			Local c:RContent = RContent(root.content.valueforkey(key))
+			
+			tSiz:+BankSize(c.data)
+		
+		Next
+		
+		Local ram:Byte Ptr = MemAlloc(tSiz)
+		
+		Local rs:TRamStream = CreateRamStream(ram,tSiz,True,True)
+		
+		For Local key:String = EachIn MapKeys(root.content)
+		
+			Local c:RContent = RContent(root.content.valueforkey(key))
+			
+			WriteBank(c.data,rs,0,BankSize(c.data))
+			
+			fs.WriteByte(96)
+			fs.WriteLine(c.localName)
+			fs.WriteLine(c.globalname)
+			fs.WriteLine(c.originalrelativepath)
+			fs.WriteLong(rs.pos()-BankSize(c.data))
+			fs.WriteLong(BankSize(c.data))
+						
+		Next
+		
+		fs.WriteByte(128)
+		
+		rs.seek(0)
+		
+		CopyStream(rs,fs)
+		fs.flush()
+		CloseFile fs
+			
+		Print "Saved."
+	
+	End Method
+
+	Method PackageFolder:RContent(path:String)
+	
+		path = Replace(path,"\","/")
+	
+		Local r:RContent = New RContent		
+		
+		Local dir:Int = ReadDir(path)
+		
+		Local l:String = Chr(path[path.length-1])
+		
+		If Not (l="\" Or l="/")
+				
+			path=path+"/"
+				
+		EndIf
+		
+		r.LocalName = path
+		r.GlobalName = path
+		r.OriginalRelativePath = path
+		
+		Print "Packaging:"+path+" folder."
+		
+		If root = Null
+		
+			Root = r
+			Print "!!Is package root."
+		
+		EndIf
+		
+		While True
+		
+			Local file:String = NextFile(dir)
+			
+			Select file
+			
+				Case ""
+					Exit
+				Case "./",".\","..",".","..\","../","`","	"," "
+				Default
+				
+					Local fullPath:String = path + file
+				
+					Local ft:Int = FileType( fullPath )
+					
+					Select ft
+					
+						Case 1
+						
+							root.AddContent( fullPath,PackageFile( fullPath ) )
+						
+						Case 2
+						
+							PackageFolder( fullPath ) 
+							
+						Default
+						
+							
+							If file.tolower().contains("ds_store")
+								Continue
+							EndIf
+							
+							
+							Print "Filesystem error."
+							RuntimeError "Unknown type of content:"+fullPath+" can not continue packaging file system."
+							End
+							
+					End Select
+			
+			End Select
+					
+		Wend
+		
+		CloseDir dir
+		
+		Return r
+	
+	End Method
+
+	Method PackageFile:RContent(path:String)
+	
+		
+		Local r:RContent = New RContent
+		r.LocalName = StripAll(path).tolower()
+		If r.localname.length=0
+			Return Null
+		EndIf
+	
+		r.GlobalName = path.tolower()
+		r.OriginalRelativePath = StripAll(path)+"."+ExtractExt(path)
+		
+	
+		Local siz:Long = FileSize(path)
+	
+		Local fs:TStream = ReadFile(path)
+		
+		r.data = CreateBank(siz)	
+	
+		ReadBank(r.data,fs,0,siz)
+		
+		r.ContentStartByte = Root.ArcOffset
+		r.ContentLength = siz
+		Root.ArcOffset:+siz
+	
+		Print "Packaging file:"+r.localname
+		
+		CloseFile fs
+		
+		Return r
+		
+	End Method
+	
+
+End Type
+
+Type RTexture
+
+	Field Handle:Int 
+	Field Width:Int,Height:Int
+	Field Depth:Int
+	Field BytesPerPixel:Int 
+	Field Name:String
+	Field Content:RContent 'if loaded via a package.
+	
+	Rem
+		Returns texture from a given content path. do not use direct paths or direct streams, use the provided methods.
+	End Rem
+'	Function GetTexture:RTexture(path:String)
+	
+'		Local c:RContent = RFileSystem.Instance().GetContent(path)
+'		Return RTexture.FromContent(c)
+		
+'	End Function
+	
+'	Method FromContent:RTexture()
+	
+'		RLog.Instance().Error("This paticular texture class has yet to extend the FromContent method, therefore can not construct it's self from a given content header.","RTexture.FromPixmap()")
+'			
+'	End Method
+	
+End Type
+
+Type RTexture2D
+
+	Field Pixels:TPixmap
+
+	Function FromContent:RTexture2D(c:RContent)
+	
+		Return RTexture2D.FromPixmap(LoadPixmap(c.toStream()))	
+	
+	End Function 
+	
+	Function FromPixmap:RTexture2D(pix:TPixmap)
+	
+		Local r:RTexture2D = New RTexture2D
+		
+		r.pixels = pix
+		
+		r.width = PixmapWidth(pix)
+		
+		r.height = PixmapHeight(pix)
+		
+		r.UploadBuffer( pix.pixelptr(0,0) )
+		
+		Return r
+	
+	End Function
+	
+	Method UploadBuffer( buf:Byte Ptr )
+	
+		
+	
+	End Method
+	
+	
+End Type
+
+'---------------

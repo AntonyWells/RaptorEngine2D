@@ -1,0 +1,42 @@
+SuperStrict
+
+Import "RaptorEngine.bmx"
+
+Print "Creating core..."
+RCore.DontPackage = True
+RCore.CreateInstance()
+Print "Created Instance."
+
+Print "Getting core Instance..."
+Local lCore:RCore = RCore.Instance()
+Print "Got."
+
+Print "Creating user display..."
+lCore.CreateDisplay(800,600,True)
+Print "Created user display."
+
+
+Local fileSys:RFileSystem = RFileSystem.Instance()
+
+Local c1:RContent = fileSys.GetContent("system/content/avatar/sentrybot/craft.png")
+
+
+Local t2:TImage
+
+t2 = LoadImage(c1.tostream())
+
+Repeat
+	PollEvent()
+	Cls
+	
+	
+	SetColor 255,255,255
+	
+	DrawImageRect t2,20,220,200,200	
+	Flip
+
+
+Until KeyDown(KEY_ESCAPE)
+
+
+
